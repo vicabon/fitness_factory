@@ -49,12 +49,14 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft JhengHei
 
 /* chips */
 .chip-row{display:flex;flex-wrap:wrap;gap:5px}
-.chip{display:inline-flex;align-items:center;background:#f4f7fb;
-      border:1px solid #dde3ed;border-radius:20px;padding:6px 12px;
+.chip{display:inline-flex;align-items:center;gap:4px;background:#f4f7fb;
+      border:1.5px solid #dde3ed;border-radius:20px;padding:6px 12px;
       font-size:13px;cursor:pointer;transition:all .15s;user-select:none;
-      min-height:34px;line-height:1;white-space:nowrap}
-.chip:hover{border-color:#1b4f72;background:#e0eaf5}
-.chip.on{border-color:#1b4f72;background:#e0eaf5;color:#1b4f72;font-weight:600}
+      min-height:34px;line-height:1;white-space:nowrap;color:#6b7280}
+.chip:hover{border-color:#1b4f72;background:#e8f0fb;color:#1b4f72}
+.chip.on{border-color:#1b4f72;background:#1b4f72;color:#fff;font-weight:600}
+.chip.on::before{content:"✓ ";font-size:11px;opacity:.9}
+.chip:not(.on){opacity:.65}
 
 /* cname chips */
 .cname-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 6px;
@@ -215,7 +217,7 @@ tr.wh td{background:#e8f4fd;color:#154360;font-weight:700;font-size:12px;
       <div class="brow">
         <button class="btn bp" onclick="applyFilter()">&#128269; 套用</button>
         <button class="btn bs" onclick="resetFilter()">重置</button>
-        <span class="note">資料更新：2026-07-10 16:15</span>
+        <span class="note">資料更新：2026-07-10 16:42</span>
       </div>
     </div>
   </div>
@@ -276,18 +278,20 @@ function buildCnameGrid() {
   grid.innerHTML = allCnames.map(n =>
     `<label class="chip on" data-val="${n}">${n}</label>`
   ).join('');
-  // click handler: toggle .on then filter
-  grid.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('on');
-      applyFilter();
-    });
+  // 事件委派：防止 label 雙觸發
+  grid.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    chip.classList.toggle('on');
+    applyFilter();
   });
 }
 
-// ── store chips（全選/取消全選）────────────────────────────────────────────
-document.querySelectorAll('.store-chips .chip').forEach(chip => {
-  chip.addEventListener('click', () => {
+// ── store chips：事件委派（防止 label 雙觸發）─────────────────────────────
+document.querySelectorAll('.store-chips').forEach(container => {
+  container.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
     chip.classList.toggle('on');
     applyFilter();
   });
@@ -328,7 +332,14 @@ function applyFilter() {
   const stores   = selectedStores();
   const teachers = teacherFilter();
 
+  // 今日日期字串 YYYY-MM-DD（本地時間）
+  const today = new Date();
+  const todayStr = today.getFullYear() + '-'
+    + String(today.getMonth()+1).padStart(2,'0') + '-'
+    + String(today.getDate()).padStart(2,'0');
+
   let rows = COURSES.filter(c => {
+    if(c.date < todayStr)  return false;   // 過去日期略過
     if(stores.length  && !stores.includes(c.store))   return false;
     if(cnames && !cnames.includes(c.course_name))     return false;
     if(teachers.length && !teachers.some(t => c.teacher.toLowerCase().includes(t))) return false;
@@ -502,6 +513,24 @@ function showStatus(type, msg) {
 
 // ── 初始化 ────────────────────────────────────────────────────────────────
 buildCnameGrid();
+
+// 預設課程名稱：含「瑜珈」且排除指定課程
+const YOGA_EXCLUDE = new Set(['體適能瑜珈','瑜珈提斯','陰瑜珈']);
+document.querySelectorAll('#cnameGrid .chip').forEach(c => {
+  const n = c.dataset.val;
+  const on = n.includes('瑜珈') && !YOGA_EXCLUDE.has(n);
+  on ? c.classList.add('on') : c.classList.remove('on');
+});
+
+// 預設廠館
+const DEFAULT_STORES = new Set([
+  '台北萬隆','台北長春','台北信義','台北健康','台北中山北',
+  '新北板橋','新北雙和','新北中和','新北新埔','新北三重'
+]);
+document.querySelectorAll('.store-chips .chip').forEach(c => {
+  DEFAULT_STORES.has(c.dataset.val) ? c.classList.add('on') : c.classList.remove('on');
+});
+
 if (window.innerWidth > 700) toggleFilter(); // 桌機預設展開
 applyFilter();
 
