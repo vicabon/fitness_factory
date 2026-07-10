@@ -386,7 +386,7 @@ function gcalUrl(c) {
   const d = c.date.replace(/-/g,'');           // YYYYMMDD
   const start = d + 'T' + sh.padStart(2,'0') + sm + '00';
   const end   = d + 'T' + eh.padStart(2,'0') + em + '00';
-  const title = encodeURIComponent(c.course_name + ' @' + c.store);
+  const title = encodeURIComponent(c.course_name + ' | ' + c.teacher + ' @' + c.store);
   const detail = encodeURIComponent('廠館：' + c.store + '\n老師：' + c.teacher
     + (c.is_sub ? '\n（代課）' : ''));
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
