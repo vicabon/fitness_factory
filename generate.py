@@ -279,11 +279,11 @@ function applyFilter() {
     return true;
   });
 
-  rows.sort((a,b) => {
-    const wi = v => WEEKDAY_ORDER.indexOf(v);
-    return (wi(a.weekday)-wi(b.weekday)) || a.date.localeCompare(b.date)
-           || a.store.localeCompare(b.store,'zh-TW') || a.course_time.localeCompare(b.course_time);
-  });
+  rows.sort((a,b) =>
+    a.date.localeCompare(b.date)
+    || a.course_time.localeCompare(b.course_time)
+    || a.store.localeCompare(b.store,'zh-TW')
+  );
 
   renderTable(rows);
   renderCards(rows);

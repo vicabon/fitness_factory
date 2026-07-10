@@ -215,7 +215,7 @@ tr.wh td{background:#e8f4fd;color:#154360;font-weight:700;font-size:12px;
       <div class="brow">
         <button class="btn bp" onclick="applyFilter()">&#128269; 套用</button>
         <button class="btn bs" onclick="resetFilter()">重置</button>
-        <span class="note">資料更新：2026-07-10 08:15</span>
+        <span class="note">資料更新：2026-07-10 16:15</span>
       </div>
     </div>
   </div>
@@ -335,11 +335,11 @@ function applyFilter() {
     return true;
   });
 
-  rows.sort((a,b) => {
-    const wi = v => WEEKDAY_ORDER.indexOf(v);
-    return (wi(a.weekday)-wi(b.weekday)) || a.date.localeCompare(b.date)
-           || a.store.localeCompare(b.store,'zh-TW') || a.course_time.localeCompare(b.course_time);
-  });
+  rows.sort((a,b) =>
+    a.date.localeCompare(b.date)
+    || a.course_time.localeCompare(b.course_time)
+    || a.store.localeCompare(b.store,'zh-TW')
+  );
 
   renderTable(rows);
   renderCards(rows);

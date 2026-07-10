@@ -78,13 +78,17 @@ def create_session():
 
 
 SUB_MARKERS = re.compile(r'[🔺▲★✦]')
+# 代課前綴：「代」單字或「代課」後接空白/課名
+SUB_PREFIX  = re.compile(r'^代課?\s*')
 
 def is_substitute(course_name):
-    return bool(SUB_MARKERS.search(course_name)) or '代課' in course_name
+    return bool(SUB_MARKERS.search(course_name)) or bool(SUB_PREFIX.match(course_name))
 
 def clean_course_name(course_name):
-    """Remove substitute markers from course name."""
-    return SUB_MARKERS.sub('', course_name).strip()
+    """Remove substitute markers and prefixes, return canonical course name."""
+    name = SUB_MARKERS.sub('', course_name).strip()
+    name = SUB_PREFIX.sub('', name).strip()
+    return name
 
 
 def parse_start_time(time_str):
