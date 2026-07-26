@@ -350,14 +350,14 @@ function renderTable(rows) {
   rows.forEach(c => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
-      html += '<tr class="wh" data-daykey="' + key + '" onclick="toggleDay(this)">'
+      html += '<tr class="wh collapsed" data-daykey="' + key + '" onclick="toggleDay(this)">'
             + '<td colspan="6">&#9658; ' + c.weekday + '&nbsp;&nbsp;' + c.date_label
             + '<span class="wh-arrow">&#9660;</span></td></tr>';
       prevKey = key;
     }
     const rCls = c.region === '北一區' ? 'r1' : 'r2';
     const url  = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    html += '<tr class="cr day-row" data-daykey="' + key + '" data-wd="' + c.weekday + '">'
+    html += '<tr class="cr day-row hidden" data-daykey="' + key + '" data-wd="' + c.weekday + '">'
       + '<td class="wd">' + c.weekday + '<span class="dt">' + c.date_label + '</span></td>'
       + '<td><span class="rbadge ' + rCls + '">' + c.region + '</span></td>'
       + '<td>' + c.store + '</td>'
@@ -390,10 +390,10 @@ function renderCards(rows) {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       if (prevKey) html += '</div>';   // close previous day-body
-      html += '<div class="day-hdr" data-daykey="' + key + '" onclick="toggleDay(this)">'
+      html += '<div class="day-hdr collapsed" data-daykey="' + key + '" onclick="toggleDay(this)">'
             + '<span class="day-hdr-txt">&#9658; ' + c.weekday + '&nbsp;' + c.date_label + '</span>'
             + '<span class="day-hdr-arrow">&#9660;</span></div>'
-            + '<div class="day-body" data-daykey="' + key + '">';
+            + '<div class="day-body hidden" data-daykey="' + key + '">';
       prevKey = key;
     }
     const rCls   = c.region === '北一區' ? 'r1' : 'r2';

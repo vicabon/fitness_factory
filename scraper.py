@@ -160,19 +160,9 @@ def fetch_schedule_for_store(session, store_name, week_start_date):
         # Parse date headers to get column -> (day_num, weekday, actual_date)
         date_soup = BeautifulSoup(date_html, 'html.parser')
         day_cols = []
-
-        # Parse year/month from bkDateYear/bkDateMonth
-        year_el = date_soup.find(class_='bkDateYear')
-        month_el = date_soup.find(class_='bkDateMonth')
-        # Fallback from week_start_date
         ref_date = datetime.strptime(week_start_date, '%Y-%m-%d').date()
-        year = int(year_el.text.strip()) if year_el else ref_date.year
-        # Handle ROC year (民國年 = 1911 + ROC)
-        if year < 200:
-            year += 1911
-        month = int(month_el.text.strip()) if month_el else ref_date.month
 
-        for th in date_soup.find_all(class_='th'):
+        for col_idx, th in enumerate(date_soup.find_all(class_='th')):
             date_box = th.find(class_='date-box')
             if date_box:
                 d_el = date_box.find(class_='date')
@@ -180,18 +170,7 @@ def fetch_schedule_for_store(session, store_name, week_start_date):
                 if d_el and w_el:
                     day_num = int(d_el.text.strip())
                     weekday = w_el.text.strip()
-                    try:
-                        actual_date = date(year, month, day_num)
-                    except ValueError:
-                        # Month overflow: e.g. day 1 in next month
-                        if day_num < 15:
-                            nm = month % 12 + 1
-                            ny = year + (1 if month == 12 else 0)
-                            actual_date = date(ny, nm, day_num)
-                        else:
-                            pm = (month - 2) % 12 + 1
-                            py = year - (1 if month == 1 else 0)
-                            actual_date = date(py, pm, day_num)
+                    actual_date = ref_date + timedelta(days=col_idx)
                     day_cols.append({
                         'day': day_num,
                         'weekday': weekday,
