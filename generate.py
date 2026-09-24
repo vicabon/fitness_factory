@@ -186,11 +186,18 @@ tr.day-row.hidden{display:none}
 .card-store{font-size:13px;color:#2d3748;font-weight:600}
 .card-tch{font-size:13px;color:#555;margin-top:5px}
 .gcal-btn{display:inline-flex;align-items:center;gap:4px;
-          padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;
+          padding:5px 8px;border-radius:6px;font-size:12px;font-weight:600;
           background:#f0f7ff;border:1.5px solid #90b8e8;color:#1b4f72;
           text-decoration:none;cursor:pointer;transition:all .15s;white-space:nowrap}
 .gcal-btn:hover,.gcal-btn:active{background:#1b4f72;color:#fff;border-color:#1b4f72}
-.card-item .gcal-btn{margin-top:8px;padding:6px 12px;border-radius:8px}
+.apple-btn{display:inline-flex;align-items:center;gap:4px;
+           padding:5px 8px;border-radius:6px;font-size:12px;font-weight:600;
+           background:#fdf2f8;border:1.5px solid #f472b6;color:#9d174d;
+           text-decoration:none;cursor:pointer;transition:all .15s;white-space:nowrap}
+.apple-btn:hover,.apple-btn:active{background:#9d174d;color:#fff;border-color:#9d174d}
+.cal-btn-group{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}
+.card-item .cal-btn-group{margin-top:8px}
+.card-item .gcal-btn,.card-item .apple-btn{padding:6px 12px;border-radius:8px}
 .day-hdr{display:flex;justify-content:space-between;align-items:center;
          background:#e8f4fd;border-radius:8px;padding:9px 13px;margin-top:12px;
          cursor:pointer;user-select:none;border:1.5px solid #bee3f8}
@@ -338,6 +345,75 @@ function gcalUrl(c) {
   return params ? 'https://calendar.google.com/calendar/r/eventedit?' + params : null;
 }
 
+function icsEscape(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function icsDateTime(date, hour, minute) {
+  return date.replace(/-/g, '') + 'T' + hour.padStart(2, '0') + minute + '00';
+}
+
+function addToAppleCalendar(cIdx) {
+  const c = currentFilteredRows[cIdx];
+  if (!c) return;
+  const m = c.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  if (!m) { alert('課程時間格式無法解析'); return; }
+  const [, sh, sm, eh, em] = m;
+  // 與 Google 日曆一致的標頭主旨格式：課程名稱 | 授課老師 @ 運動場館
+  const title = c.course_name + ' | ' + c.teacher + ' @ ' + c.store;
+  const description = '廠館：' + c.store + '\n老師：' + c.teacher + (c.is_sub ? '\n（代課）' : '');
+  const uid = c.date.replace(/-/g, '') + '-' + Date.now() + '@fitness-factory';
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Fitness Factory//Course Schedule//ZH-TW',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-TIMEZONE:Asia/Taipei',
+    'BEGIN:VEVENT',
+    'UID:' + uid,
+    'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z'),
+    'DTSTART;TZID=Asia/Taipei:' + icsDateTime(c.date, sh, sm),
+    'DTEND;TZID=Asia/Taipei:' + icsDateTime(c.date, eh, em),
+    'SUMMARY:' + icsEscape(title),
+    'LOCATION:' + icsEscape(c.store),
+    'DESCRIPTION:' + icsEscape(description),
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:課程提醒',
+    'TRIGGER:-PT60M',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+    ''
+  ].join('\r\n');
+
+  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+    link.download = title.replace(/[\\/:*?"<>|]/g, '_') + '.ics';
+  }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function renderCalButtons(c, index) {
+  const gcUrl = gcalUrl(c);
+  if (!gcUrl) return '';
+  return '<div class="cal-btn-group">'
+    + '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; Google行事曆</a>'
+    + '<button type="button" class="apple-btn" onclick="addToAppleCalendar(' + index + ')">&#127822; Apple行事曆</button>'
+    + '</div>';
+}
+
 function subBadge(c) {
   return c.is_sub ? '<span class="sub-b">代課</span>' : '';
 }
@@ -351,7 +427,7 @@ function renderTable(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach(c => {
+  rows.forEach((c, index) => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       html += '<tr class="wh collapsed" data-daykey="' + key + '" onclick="toggleDay(this)">'
@@ -361,10 +437,7 @@ function renderTable(rows) {
     }
     const rCls = c.region === '北一區' ? 'r1' : 'r2';
     const url  = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const gcUrl = gcalUrl(c);
-    const gcBtn = gcUrl
-      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
-      : '';
+    const btns = renderCalButtons(c, index);
     html += '<tr class="cr day-row hidden" data-daykey="' + key + '" data-wd="' + c.weekday + '">'
       + '<td class="wd">' + c.weekday + '<span class="dt">' + c.date_label + '</span></td>'
       + '<td><span class="rbadge ' + rCls + '">' + c.region + '</span></td>'
@@ -372,7 +445,7 @@ function renderTable(rows) {
       + '<td><a class="clink" href="' + url + '" target="_blank">' + c.course_name + '</a>' + subBadge(c) + '</td>'
       + '<td class="ctime">' + c.course_time + '</td>'
       + '<td class="tch">' + c.teacher + '</td>'
-      + '<td>' + gcBtn + '</td>'
+      + '<td>' + btns + '</td>'
       + '</tr>';
   });
   tbody.innerHTML = html;
@@ -395,7 +468,7 @@ function renderCards(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach((c) => {
+  rows.forEach((c, index) => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       if (prevKey) html += '</div>';   // close previous day-body
@@ -408,10 +481,7 @@ function renderCards(rows) {
     const rCls   = c.region === '北一區' ? 'r1' : 'r2';
     const subCls = c.is_sub ? ' sub' : '';
     const url    = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const gcUrl  = gcalUrl(c);
-    const gcBtn  = gcUrl
-      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
-      : '';
+    const btns   = renderCalButtons(c, index);
     html += '<div class="card-item' + subCls + '">'
       + '<div class="card-top">'
       + '<div><a class="card-cname" href="' + url + '" target="_blank">' + c.course_name + '</a>'
@@ -423,7 +493,7 @@ function renderCards(rows) {
       + '<span class="card-store">' + c.store + '</span>'
       + '</div>'
       + '<div class="card-tch"><span>老師：</span>' + c.teacher + '</div>'
-      + gcBtn
+      + btns
       + '</div>';
   });
   if (prevKey) html += '</div>';  // close last day-body
