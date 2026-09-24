@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 健身工廠課表爬蟲
-抓取北一區(台北市)和北二區(新北市)當月課程資料
-條件：早上到18:00開課，代課課程往後一/兩週同廠館同時間顯示
+抓取北一區(台北市)和北二區(新北市)當月全天課程資料
+條件：全天開課，代課課程往後一/兩週同廠館同時間顯示
 """
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
@@ -100,9 +100,8 @@ def parse_start_time(time_str):
 
 
 def is_valid_time(time_str):
-    """True if course starts at or before 18:00 exactly"""
-    h, m = parse_start_time(time_str)
-    return h < 18 or (h == 18 and m == 0)
+    """全天課表，不限制開課時間"""
+    return True
 
 
 def matches_category(course_name, selected_categories):
