@@ -17,10 +17,6 @@ OUT = os.path.join(os.path.dirname(__file__), 'index.html')
 # 課程名稱黑名單關鍵字（含任一者不列出）
 SKIP_KEYWORDS = ['停課', '暫停', '師資考核']
 
-# Google Cloud OAuth 2.0 Web client ID。
-# 請建立 OAuth 用戶端後填入，並將 GitHub Pages 網域加入「已授權的 JavaScript 來源」。
-GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com'
-
 WEEKDAY_ORDER = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
 
 
@@ -195,6 +191,10 @@ tr.day-row.hidden{display:none}
           background:#f0f7ff;border:1.5px solid #90b8e8;color:#1b4f72;
           text-decoration:none;cursor:pointer;transition:all .15s}
 .gcal-btn:hover,.gcal-btn:active{background:#1b4f72;color:#fff;border-color:#1b4f72}
+.ics-btn{display:inline-flex;align-items:center;gap:4px;margin-top:8px;margin-left:5px;
+         padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;
+         background:#fff7ed;border:1.5px solid #f2b880;color:#9a4d0b;cursor:pointer}
+.ics-btn:hover,.ics-btn:active{background:#fff0dc;border-color:#d97706}
 .day-hdr{display:flex;justify-content:space-between;align-items:center;
          background:#e8f4fd;border-radius:8px;padding:9px 13px;margin-top:12px;
          cursor:pointer;user-select:none;border:1.5px solid #bee3f8}
@@ -232,87 +232,6 @@ tr.day-row.hidden{display:none}
 # ── JavaScript ────────────────────────────────────────────────────────────────
 JS = r"""
 const WEEKDAY_ORDER = ['星期一','星期二','星期三','星期四','星期五','星期六','星期日'];
-const GOOGLE_CLIENT_ID = '__GOOGLE_CLIENT_ID__';
-const GOOGLE_CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
-let googleTokenClient = null;
-let googleAccessToken = null;
-let pendingCalendarCourse = null;
-
-function addToGoogleCalendar(course) {
-  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_')) {
-    alert('請先設定 Google OAuth Client ID，才能使用 Google Calendar API。');
-    return;
-  }
-  if (!window.google || !google.accounts || !google.accounts.oauth2) {
-    alert('Google 登入元件尚未載入，請重新整理頁面後再試。');
-    return;
-  }
-
-  pendingCalendarCourse = course;
-  if (!googleTokenClient) {
-    googleTokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: GOOGLE_CALENDAR_SCOPE,
-      callback: handleGoogleTokenResponse,
-    });
-  }
-  googleTokenClient.requestAccessToken({prompt: googleAccessToken ? '' : 'consent'});
-}
-
-async function handleGoogleTokenResponse(response) {
-  if (response.error) {
-    alert('Google Calendar 授權失敗：' + response.error);
-    return;
-  }
-  googleAccessToken = response.access_token;
-  const course = pendingCalendarCourse;
-  pendingCalendarCourse = null;
-  if (!course) return;
-
-  const match = course.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-  if (!match) {
-    alert('課程時間格式無法解析。');
-    return;
-  }
-  const [, sh, sm, eh, em] = match;
-  const event = {
-    summary: course.course_name + ' | ' + course.teacher,
-    location: course.store,
-    description: '廠館：' + course.store + '\n老師：' + course.teacher
-      + (course.is_sub ? '\n（代課）' : ''),
-    start: {
-      dateTime: course.date + 'T' + sh.padStart(2, '0') + ':' + sm + ':00',
-      timeZone: 'Asia/Taipei',
-    },
-    end: {
-      dateTime: course.date + 'T' + eh.padStart(2, '0') + ':' + em + ':00',
-      timeZone: 'Asia/Taipei',
-    },
-    reminders: {useDefault: false, overrides: [{method: 'popup', minutes: 60}]},
-  };
-
-  try {
-    const resp = await fetch(
-      'https://www.googleapis.com/calendar/v3/calendars/primary/events',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + googleAccessToken,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(event),
-      }
-    );
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      alert('新增行事曆失敗：' + (data.error?.message || 'HTTP ' + resp.status));
-      return;
-    }
-    alert('已加入 Google Calendar：' + course.course_name);
-  } catch (e) {
-    alert('新增行事曆時發生網路錯誤：' + e.message);
-  }
-}
 
 // ── 課程名稱清單（去重排序）────────────────────────────────────────────────
 const allCnames = [...new Set(COURSES.map(c => c.course_name))]
@@ -403,6 +322,68 @@ function applyFilter() {
 }
 
 // ── Google Calendar helper ────────────────────────────────────────────────
+function icsEscape(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function icsDateTime(date, hour, minute) {
+  return date.replace(/-/g, '') + 'T'
+    + hour.padStart(2, '0') + minute + '00';
+}
+
+function addToSystemCalendar(c) {
+  const m = c.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  if (!m) { alert('課程時間格式無法解析。'); return; }
+  const [, sh, sm, eh, em] = m;
+  const title = c.course_name + ' | ' + c.teacher;
+  const description = '廠館：' + c.store + '\n老師：' + c.teacher
+    + (c.is_sub ? '\n（代課）' : '');
+  const uid = c.date.replace(/-/g, '') + '-' + Date.now()
+    + '@fitness-factory';
+  const ics = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Fitness Factory//Course Schedule//ZH-TW',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-TIMEZONE:Asia/Taipei',
+    'BEGIN:VEVENT',
+    'UID:' + uid,
+    'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z'),
+    'DTSTART;TZID=Asia/Taipei:' + icsDateTime(c.date, sh, sm),
+    'DTEND;TZID=Asia/Taipei:' + icsDateTime(c.date, eh, em),
+    'SUMMARY:' + icsEscape(title),
+    'LOCATION:' + icsEscape(c.store),
+    'DESCRIPTION:' + icsEscape(description),
+    'BEGIN:VALARM',
+    'ACTION:DISPLAY',
+    'DESCRIPTION:課程提醒',
+    'TRIGGER:-PT60M',
+    'END:VALARM',
+    'END:VEVENT',
+    'END:VCALENDAR',
+    ''
+  ].join('\r\n');
+
+  const blob = new Blob([ics], {type: 'text/calendar;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+    link.download = title.replace(/[\\/:*?"<>|]/g, '_') + '.ics';
+  }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 function gcalUrl(c) {
   // course_time format: "09:10 - 10:10"
   const m = c.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
@@ -414,14 +395,10 @@ function gcalUrl(c) {
   const title = encodeURIComponent(c.course_name + ' | ' + c.teacher + ' @ ' + c.store);
   const detail = encodeURIComponent('廠館：' + c.store + '\n老師：' + c.teacher
     + (c.is_sub ? '\n（代課）' : ''));
-  const location = encodeURIComponent(c.store);
-  // 使用 eventedit 路徑，Google Calendar iOS App 才會解析 query 參數。
-  return 'https://calendar.google.com/calendar/u/0/r/eventedit'
-    + '?text=' + title
+  return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
+    + '&text=' + title
     + '&dates=' + start + '/' + end
     + '&details=' + detail
-    + '&location=' + location
-    + '&ctz=Asia%2FTaipei'
     + '&rem=popup_60';   // 60 分鐘前提醒
 }
 
@@ -490,8 +467,10 @@ function renderCards(rows) {
     const url    = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
     const gcUrl  = gcalUrl(c);
     const gcBtn  = gcUrl
-      ? '<button type="button" class="gcal-btn" data-course-index="' + index + '">&#128197; 加入行事曆</button>'
+      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
       : '';
+    const icsBtn = '<button type="button" class="ics-btn" data-ics-index="' + index
+      + '">&#127822; iPhone / 系統行事曆</button>';
     html += '<div class="card-item' + subCls + '">'
       + '<div class="card-top">'
       + '<div><a class="card-cname" href="' + url + '" target="_blank">' + c.course_name + '</a>'
@@ -504,13 +483,14 @@ function renderCards(rows) {
       + '</div>'
       + '<div class="card-tch"><span>老師：</span>' + c.teacher + '</div>'
       + gcBtn
+      + icsBtn
       + '</div>';
   });
   if (prevKey) html += '</div>';  // close last day-body
   list.innerHTML = html;
-  list.querySelectorAll('.gcal-btn').forEach(button => {
+  list.querySelectorAll('.ics-btn').forEach(button => {
     button.addEventListener('click', () => {
-      addToGoogleCalendar(rows[Number(button.dataset.courseIndex)]);
+      addToSystemCalendar(rows[Number(button.dataset.icsIndex)]);
     });
   });
 }
@@ -656,7 +636,6 @@ HTML_TEMPLATE = """\
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>健身工廠課表 | 北一區 / 北二區</title>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>__CSS__</style>
 </head>
 <body>
@@ -796,7 +775,6 @@ def main():
     html = HTML_TEMPLATE
     html = html.replace('__CSS__',          CSS)
     html = html.replace('__JS__',           JS)
-    html = html.replace('__GOOGLE_CLIENT_ID__', GOOGLE_CLIENT_ID)
     html = html.replace('__COURSES_JSON__', courses_json)
     html = html.replace('__STORE_CHIPS__',  build_store_chips())
     html = html.replace('__DATE_RANGE__',   date_range)
