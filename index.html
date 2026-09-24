@@ -390,8 +390,9 @@ function gcalUrl(c) {
   const detail = encodeURIComponent('廠館：' + c.store + '\n老師：' + c.teacher
     + (c.is_sub ? '\n（代課）' : ''));
   const location = encodeURIComponent(c.store);
-  return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
-    + '&text=' + title
+  // 使用 eventedit 路徑，Google Calendar iOS App 才會解析 query 參數。
+  return 'https://calendar.google.com/calendar/u/0/r/eventedit'
+    + '?text=' + title
     + '&dates=' + start + '/' + end
     + '&details=' + detail
     + '&location=' + location
