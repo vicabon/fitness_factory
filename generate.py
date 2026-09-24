@@ -329,10 +329,13 @@ function gcalUrl(c) {
   const title = encodeURIComponent(c.course_name + ' | ' + c.teacher + ' @ ' + c.store);
   const detail = encodeURIComponent('廠館：' + c.store + '\n老師：' + c.teacher
     + (c.is_sub ? '\n（代課）' : ''));
+  const location = encodeURIComponent(c.store);
   return 'https://calendar.google.com/calendar/render?action=TEMPLATE'
     + '&text=' + title
     + '&dates=' + start + '/' + end
     + '&details=' + detail
+    + '&location=' + location
+    + '&ctz=Asia%2FTaipei'
     + '&rem=popup_60';   // 60 分鐘前提醒
 }
 
@@ -401,7 +404,7 @@ function renderCards(rows) {
     const url    = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
     const gcUrl  = gcalUrl(c);
     const gcBtn  = gcUrl
-      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
+      ? '<a class="gcal-btn" href="' + gcUrl + '">&#128197; 加入行事曆</a>'
       : '';
     html += '<div class="card-item' + subCls + '">'
       + '<div class="card-top">'
