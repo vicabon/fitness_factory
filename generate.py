@@ -186,11 +186,18 @@ tr.day-row.hidden{display:none}
 .card-store{font-size:13px;color:#2d3748;font-weight:600}
 .card-tch{font-size:13px;color:#555;margin-top:5px}
 .gcal-btn{display:inline-flex;align-items:center;gap:4px;
-          padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;
+          padding:5px 8px;border-radius:6px;font-size:12px;font-weight:600;
           background:#f0f7ff;border:1.5px solid #90b8e8;color:#1b4f72;
           text-decoration:none;cursor:pointer;transition:all .15s;white-space:nowrap}
 .gcal-btn:hover,.gcal-btn:active{background:#1b4f72;color:#fff;border-color:#1b4f72}
-.card-item .gcal-btn{margin-top:8px;padding:6px 12px;border-radius:8px}
+.gcal-opt1{background:#f0fdf4;border-color:#86efac;color:#166534}
+.gcal-opt1:hover{background:#166534;color:#fff;border-color:#166534}
+.gcal-opt2{background:#fefce8;border-color:#fde047;color:#854d0e}
+.gcal-opt2:hover{background:#854d0e;color:#fff;border-color:#854d0e}
+.gcal-opt3{background:#faf5ff;border-color:#d8b4fe;color:#6b21a8}
+.gcal-opt3:hover{background:#6b21a8;color:#fff;border-color:#6b21a8}
+.cal-btn-group{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}
+.card-item .cal-btn-group{margin-top:8px}
 .day-hdr{display:flex;justify-content:space-between;align-items:center;
          background:#e8f4fd;border-radius:8px;padding:9px 13px;margin-top:12px;
          cursor:pointer;user-select:none;border:1.5px solid #bee3f8}
@@ -312,14 +319,14 @@ function applyFilter() {
     || a.store.localeCompare(b.store,'zh-TW')
   );
 
+  currentFilteredRows = rows;
   renderTable(rows);
   renderCards(rows);
   document.getElementById('rcount').textContent = '共 ' + rows.length + ' 筆課程';
 }
 
 // ── Google Calendar helper ────────────────────────────────────────────────
-function gcalUrl(c) {
-  // course_time format: "09:10 - 10:10"
+function getGcalParams(c) {
   const m = c.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
   if (!m) return null;
   const [,sh,sm,eh,em] = m;
@@ -330,17 +337,54 @@ function gcalUrl(c) {
   const detail = encodeURIComponent('廠館：' + c.store + '\n老師：' + c.teacher
     + (c.is_sub ? '\n（代課）' : ''));
   const location = encodeURIComponent(c.store);
-  return 'https://calendar.google.com/calendar/r/eventedit?action=TEMPLATE'
-    + '&text=' + title
-    + '&dates=' + start + '/' + end
-    + '&details=' + detail
-    + '&location=' + location
-    + '&rem=popup_60';
+  return 'action=TEMPLATE&text=' + title + '&dates=' + start + '/' + end + '&details=' + detail + '&location=' + location + '&rem=popup_60';
+}
+
+function gcalUrl(c) {
+  const params = getGcalParams(c);
+  return params ? 'https://calendar.google.com/calendar/r/eventedit?' + params : null;
+}
+
+// 方案一：使用帳號路徑 /u/0/，常可避開 App Links 預設攔截規則
+function gcalUrlOpt1(c) {
+  const params = getGcalParams(c);
+  return params ? 'https://calendar.google.com/calendar/u/0/r/eventedit?' + params : null;
+}
+
+// 方案二：使用 www.google.com/calendar/render 舊版 Web 重定向端點
+function gcalUrlOpt2(c) {
+  const params = getGcalParams(c);
+  return params ? 'https://www.google.com/calendar/render?' + params : null;
+}
+
+// 方案三：前端 JS window.open 配合 noopener,noreferrer
+function openGcalOpt3(cIdx) {
+  const c = currentFilteredRows[cIdx];
+  if (!c) return;
+  const url = gcalUrlOpt1(c) || gcalUrl(c);
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+function renderCalButtons(c, index) {
+  const gcUrl = gcalUrl(c);
+  if (!gcUrl) return '';
+  const url1 = gcalUrlOpt1(c);
+  const url2 = gcalUrlOpt2(c);
+  return '<div class="cal-btn-group">'
+    + '<a class="gcal-btn" href="' + gcUrl + '" target="_blank" title="原始建議格式">&#128197; 加入行事曆</a>'
+    + '<a class="gcal-btn gcal-opt1" href="' + url1 + '" target="_blank" title="方案一：/u/0/ 網頁路徑">方案一</a>'
+    + '<a class="gcal-btn gcal-opt2" href="' + url2 + '" target="_blank" title="方案二：www.google.com 端點">方案二</a>'
+    + '<button type="button" class="gcal-btn gcal-opt3" onclick="openGcalOpt3(' + index + ')" title="方案三：JS window.open + no-referrer">方案三</button>'
+    + '</div>';
 }
 
 function subBadge(c) {
   return c.is_sub ? '<span class="sub-b">代課</span>' : '';
 }
+
+let currentFilteredRows = [];
 
 function renderTable(rows) {
   const tbody  = document.getElementById('tblBody');
@@ -349,7 +393,7 @@ function renderTable(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach(c => {
+  rows.forEach((c, index) => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       html += '<tr class="wh collapsed" data-daykey="' + key + '" onclick="toggleDay(this)">'
@@ -359,10 +403,7 @@ function renderTable(rows) {
     }
     const rCls = c.region === '北一區' ? 'r1' : 'r2';
     const url  = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const gcUrl = gcalUrl(c);
-    const gcBtn = gcUrl
-      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
-      : '';
+    const btns = renderCalButtons(c, index);
     html += '<tr class="cr day-row hidden" data-daykey="' + key + '" data-wd="' + c.weekday + '">'
       + '<td class="wd">' + c.weekday + '<span class="dt">' + c.date_label + '</span></td>'
       + '<td><span class="rbadge ' + rCls + '">' + c.region + '</span></td>'
@@ -370,7 +411,7 @@ function renderTable(rows) {
       + '<td><a class="clink" href="' + url + '" target="_blank">' + c.course_name + '</a>' + subBadge(c) + '</td>'
       + '<td class="ctime">' + c.course_time + '</td>'
       + '<td class="tch">' + c.teacher + '</td>'
-      + '<td>' + gcBtn + '</td>'
+      + '<td>' + btns + '</td>'
       + '</tr>';
   });
   tbody.innerHTML = html;
@@ -393,7 +434,7 @@ function renderCards(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach((c) => {
+  rows.forEach((c, index) => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       if (prevKey) html += '</div>';   // close previous day-body
@@ -406,10 +447,7 @@ function renderCards(rows) {
     const rCls   = c.region === '北一區' ? 'r1' : 'r2';
     const subCls = c.is_sub ? ' sub' : '';
     const url    = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const gcUrl  = gcalUrl(c);
-    const gcBtn  = gcUrl
-      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
-      : '';
+    const btns   = renderCalButtons(c, index);
     html += '<div class="card-item' + subCls + '">'
       + '<div class="card-top">'
       + '<div><a class="card-cname" href="' + url + '" target="_blank">' + c.course_name + '</a>'
@@ -421,7 +459,7 @@ function renderCards(rows) {
       + '<span class="card-store">' + c.store + '</span>'
       + '</div>'
       + '<div class="card-tch"><span>老師：</span>' + c.teacher + '</div>'
-      + gcBtn
+      + btns
       + '</div>';
   });
   if (prevKey) html += '</div>';  // close last day-body
