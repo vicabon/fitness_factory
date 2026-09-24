@@ -186,18 +186,11 @@ tr.day-row.hidden{display:none}
 .card-store{font-size:13px;color:#2d3748;font-weight:600}
 .card-tch{font-size:13px;color:#555;margin-top:5px}
 .gcal-btn{display:inline-flex;align-items:center;gap:4px;
-          padding:5px 8px;border-radius:6px;font-size:12px;font-weight:600;
+          padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;
           background:#f0f7ff;border:1.5px solid #90b8e8;color:#1b4f72;
           text-decoration:none;cursor:pointer;transition:all .15s;white-space:nowrap}
 .gcal-btn:hover,.gcal-btn:active{background:#1b4f72;color:#fff;border-color:#1b4f72}
-.gcal-solA{background:#f0fdf4;border-color:#86efac;color:#166534}
-.gcal-solA:hover{background:#166534;color:#fff;border-color:#166534}
-.gcal-solB{background:#fefce8;border-color:#fde047;color:#854d0e}
-.gcal-solB:hover{background:#854d0e;color:#fff;border-color:#854d0e}
-.gcal-solC{background:#faf5ff;border-color:#d8b4fe;color:#6b21a8}
-.gcal-solC:hover{background:#6b21a8;color:#fff;border-color:#6b21a8}
-.cal-btn-group{display:inline-flex;flex-wrap:wrap;gap:4px;align-items:center}
-.card-item .cal-btn-group{margin-top:8px}
+.card-item .gcal-btn{margin-top:8px;padding:6px 12px;border-radius:8px}
 .day-hdr{display:flex;justify-content:space-between;align-items:center;
          background:#e8f4fd;border-radius:8px;padding:9px 13px;margin-top:12px;
          cursor:pointer;user-select:none;border:1.5px solid #bee3f8}
@@ -230,9 +223,6 @@ tr.day-row.hidden{display:none}
 .modal-status.ok{background:#d1fae5;color:#065f46;display:block}
 .modal-status.err{background:#fde8e8;color:#9b1c1c;display:block}
 .modal-status.info{background:#dbeafe;color:#1e40af;display:block}
-.guide-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:12px 0;font-size:13px;color:#334155;line-height:1.6}
-.guide-box strong{color:#0f172a}
-.guide-box ol{padding-left:18px;margin-top:6px}
 """
 
 # ── JavaScript ────────────────────────────────────────────────────────────────
@@ -348,137 +338,6 @@ function gcalUrl(c) {
   return params ? 'https://calendar.google.com/calendar/r/eventedit?' + params : null;
 }
 
-// 方案 A：同網域跳轉頁（Bounce Page），切斷 iOS Universal Links 針對 calendar.google.com 的攔截
-function openSolutionA(cIdx) {
-  const c = currentFilteredRows[cIdx];
-  if (!c) return;
-  const targetUrl = gcalUrl(c);
-  if (!targetUrl) return;
-
-  const bounceHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>正在開啟 Google 行事曆...</title>
-  <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:30px 20px;text-align:center;background:#f8fafc;color:#1e293b}
-    .card{background:#fff;border-radius:12px;padding:24px;max-width:400px;margin:20px auto;box-shadow:0 4px 12px rgba(0,0,0,.08)}
-    .btn{display:inline-block;background:#1b4f72;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700;margin-top:16px}
-    .note{font-size:12px;color:#64748b;margin-top:14px;line-height:1.5}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h3 style="color:#1b4f72;margin-bottom:8px">📅 正在前往 Google 日曆網頁版</h3>
-    <p style="font-size:14px;color:#475569">若瀏覽器未自動跳轉，請點擊下方按鈕：</p>
-    <a class="btn" href="${targetUrl}">進入 Google 日曆</a>
-    <p class="note">💡 提示：若長按上方按鈕並選擇「在新分頁中開啟」，可 100% 確保以瀏覽器開啟網頁版。</p>
-  </div>
-  <script>
-    setTimeout(function() {
-      window.location.replace("${targetUrl}");
-    }, 300);
-  <\/script>
-</body>
-</html>`;
-
-  const blob = new Blob([bounceHtml], { type: 'text/html;charset=utf-8' });
-  const blobUrl = URL.createObjectURL(blob);
-  const w = window.open(blobUrl, '_blank');
-  if (!w) {
-    window.location.href = blobUrl;
-  }
-}
-
-// 方案 B：產生標準 iCalendar (.ics) 資料流，完美觸發 iOS 原生「加入行程」視窗（能直接同步至綁定的 Google 帳號）
-function icsEscape(value) {
-  return String(value || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
-}
-
-function icsDateTime(date, hour, minute) {
-  return date.replace(/-/g, '') + 'T' + hour.padStart(2, '0') + minute + '00';
-}
-
-function openSolutionB(cIdx) {
-  const c = currentFilteredRows[cIdx];
-  if (!c) return;
-  const m = c.course_time.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-  if (!m) { alert('課程時間格式無法解析'); return; }
-  const [, sh, sm, eh, em] = m;
-  const title = c.course_name + ' | ' + c.teacher;
-  const description = '廠館：' + c.store + '\\n老師：' + c.teacher + (c.is_sub ? '\\n（代課）' : '');
-  const uid = c.date.replace(/-/g, '') + '-' + Date.now() + '@fitness-factory';
-  const ics = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Fitness Factory//Course Schedule//ZH-TW',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-TIMEZONE:Asia/Taipei',
-    'BEGIN:VEVENT',
-    'UID:' + uid,
-    'DTSTAMP:' + new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z'),
-    'DTSTART;TZID=Asia/Taipei:' + icsDateTime(c.date, sh, sm),
-    'DTEND;TZID=Asia/Taipei:' + icsDateTime(c.date, eh, em),
-    'SUMMARY:' + icsEscape(title),
-    'LOCATION:' + icsEscape(c.store),
-    'DESCRIPTION:' + icsEscape(description),
-    'BEGIN:VALARM',
-    'ACTION:DISPLAY',
-    'DESCRIPTION:課程提醒',
-    'TRIGGER:-PT60M',
-    'END:VALARM',
-    'END:VEVENT',
-    'END:VCALENDAR',
-    ''
-  ].join('\r\n');
-
-  const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  if (!/iPad|iPhone|iPod/.test(navigator.userAgent)) {
-    link.download = title.replace(/[\\/:*?"<>|]/g, '_') + '.ics';
-  }
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
-
-// 方案 C：智慧引導彈窗（Device Guidance），依據裝置提供最順暢的加入方式與連結
-let activeSolCIndex = null;
-function openSolutionC(cIdx) {
-  activeSolCIndex = cIdx;
-  const c = currentFilteredRows[cIdx];
-  if (!c) return;
-  const gcUrl = gcalUrl(c);
-  document.getElementById('solCLink').href = gcUrl;
-  document.getElementById('solCModalTitle').textContent = c.course_name + ' (' + c.store + ')';
-  document.getElementById('solCModalTime').textContent = c.date + ' ' + c.course_time + ' · ' + c.teacher;
-  document.getElementById('solutionCModal').classList.add('open');
-}
-
-function closeSolutionCModal() {
-  document.getElementById('solutionCModal').classList.remove('open');
-}
-
-function renderCalButtons(c, index) {
-  const gcUrl = gcalUrl(c);
-  if (!gcUrl) return '';
-  return '<div class="cal-btn-group">'
-    + '<a class="gcal-btn" href="' + gcUrl + '" target="_blank" title="原始建議格式">&#128197; 加入行事曆</a>'
-    + '<button type="button" class="gcal-btn gcal-solA" onclick="openSolutionA(' + index + ')" title="方案A：中介跳轉頁（防 App 攔截）">方案A</button>'
-    + '<button type="button" class="gcal-btn gcal-solB" onclick="openSolutionB(' + index + ')" title="方案B：原生行程事件（相容度最高）">方案B</button>'
-    + '<button type="button" class="gcal-btn gcal-solC" onclick="openSolutionC(' + index + ')" title="方案C：智慧操作導引">方案C</button>'
-    + '</div>';
-}
-
 function subBadge(c) {
   return c.is_sub ? '<span class="sub-b">代課</span>' : '';
 }
@@ -492,7 +351,7 @@ function renderTable(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach((c, index) => {
+  rows.forEach(c => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       html += '<tr class="wh collapsed" data-daykey="' + key + '" onclick="toggleDay(this)">'
@@ -502,7 +361,10 @@ function renderTable(rows) {
     }
     const rCls = c.region === '北一區' ? 'r1' : 'r2';
     const url  = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const btns = renderCalButtons(c, index);
+    const gcUrl = gcalUrl(c);
+    const gcBtn = gcUrl
+      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
+      : '';
     html += '<tr class="cr day-row hidden" data-daykey="' + key + '" data-wd="' + c.weekday + '">'
       + '<td class="wd">' + c.weekday + '<span class="dt">' + c.date_label + '</span></td>'
       + '<td><span class="rbadge ' + rCls + '">' + c.region + '</span></td>'
@@ -510,7 +372,7 @@ function renderTable(rows) {
       + '<td><a class="clink" href="' + url + '" target="_blank">' + c.course_name + '</a>' + subBadge(c) + '</td>'
       + '<td class="ctime">' + c.course_time + '</td>'
       + '<td class="tch">' + c.teacher + '</td>'
-      + '<td>' + btns + '</td>'
+      + '<td>' + gcBtn + '</td>'
       + '</tr>';
   });
   tbody.innerHTML = html;
@@ -533,7 +395,7 @@ function renderCards(rows) {
   noData.style.display = 'none';
 
   let html = '', prevKey = '';
-  rows.forEach((c, index) => {
+  rows.forEach((c) => {
     const key = c.weekday + c.date;
     if (key !== prevKey) {
       if (prevKey) html += '</div>';   // close previous day-body
@@ -546,7 +408,10 @@ function renderCards(rows) {
     const rCls   = c.region === '北一區' ? 'r1' : 'r2';
     const subCls = c.is_sub ? ' sub' : '';
     const url    = 'https://www.fitnessfactory.com.tw/tw/course/' + encodeURIComponent(c.course_name);
-    const btns   = renderCalButtons(c, index);
+    const gcUrl  = gcalUrl(c);
+    const gcBtn  = gcUrl
+      ? '<a class="gcal-btn" href="' + gcUrl + '" target="_blank">&#128197; 加入行事曆</a>'
+      : '';
     html += '<div class="card-item' + subCls + '">'
       + '<div class="card-top">'
       + '<div><a class="card-cname" href="' + url + '" target="_blank">' + c.course_name + '</a>'
@@ -558,7 +423,7 @@ function renderCards(rows) {
       + '<span class="card-store">' + c.store + '</span>'
       + '</div>'
       + '<div class="card-tch"><span>老師：</span>' + c.teacher + '</div>'
-      + btns
+      + gcBtn
       + '</div>';
   });
   if (prevKey) html += '</div>';  // close last day-body
@@ -799,26 +664,6 @@ HTML_TEMPLATE = """\
   <div class="card-list" id="cardList"></div>
   <div id="cardNoData" class="nodata" style="display:none">沒有符合條件的課程</div>
 
-</div>
-
-<!-- 方案 C 導引 Modal -->
-<div class="modal-bg" id="solutionCModal" onclick="if(event.target===this)closeSolutionCModal()">
-  <div class="modal">
-    <h3 id="solCModalTitle">加入課程</h3>
-    <p id="solCModalTime" style="color:#64748b;font-weight:600;margin-bottom:12px"></p>
-    <div class="guide-box">
-      <strong>📱 iPhone / 行動裝置建議操作：</strong>
-      <ol>
-        <li>點擊下方<strong>「以網頁開啟 Google 日曆」</strong>。</li>
-        <li>若仍跳轉至 App，請<strong>長按按鈕</strong>並選擇<strong>「在新分頁中打開」</strong>，即可 100% 繞過 App 攔截並完整帶入課程資訊！</li>
-        <li>或改點上方<strong>「方案B」</strong>直接加入手機行事曆。</li>
-      </ol>
-    </div>
-    <div class="modal-btns" style="justify-content:space-between">
-      <button class="btn bs" onclick="closeSolutionCModal()">關閉</button>
-      <a id="solCLink" class="btn bp" href="#" target="_blank" rel="noopener">以網頁開啟 Google 日曆</a>
-    </div>
-  </div>
 </div>
 
 <!-- 更新課表 Modal -->
