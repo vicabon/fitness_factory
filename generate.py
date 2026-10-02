@@ -13,11 +13,59 @@ sys.stdout.reconfigure(encoding='utf-8')
 from scraper import fetch_all_courses, REGIONS
 
 OUT = os.path.join(os.path.dirname(__file__), 'index.html')
+TEACHERS_FILE = os.path.join(os.path.dirname(__file__), 'teachers.json')
 
 # 課程名稱黑名單關鍵字（含任一者不列出）
 SKIP_KEYWORDS = ['停課', '暫停', '師資考核']
 
 WEEKDAY_ORDER = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日']
+
+
+def load_and_update_teachers(courses):
+    """
+    載入 teachers.json 並根據當前課程更新標籤與新增老師。
+    已有的 intensity 與 tags 會一直保留。
+    """
+    teachers_data = {}
+    if os.path.exists(TEACHERS_FILE):
+        try:
+            with open(TEACHERS_FILE, 'r', encoding='utf-8') as f:
+                teachers_data = json.load(f)
+        except Exception as e:
+            print(f"Warning: 讀取 {TEACHERS_FILE} 失敗: {e}", file=sys.stderr)
+
+    # 檢視當前課程，若發現有串聯、流動、阿斯坦加，自動追加標籤（保留既有標籤）
+    for c in courses:
+        t_raw = c.get('teacher', '').strip()
+        cname = c.get('course_name', '')
+        if not t_raw:
+            continue
+        # 老師名稱可能以 " / " 分隔多位
+        for t in [x.strip() for x in t_raw.split('/') if x.strip()]:
+            if t not in teachers_data:
+                teachers_data[t] = {
+                    'intensity': None,
+                    'tags': []
+                }
+            tags_set = set(teachers_data[t].get('tags', []))
+            if '串聯' in cname:
+                tags_set.add('串聯')
+            if '流動' in cname:
+                tags_set.add('流動')
+            if '阿斯坦加' in cname:
+                tags_set.add('阿斯坦加')
+            if '強力' in cname:
+                tags_set.add('強力')
+            teachers_data[t]['tags'] = sorted(list(tags_set))
+
+    # 寫回 teachers.json 儲存
+    try:
+        with open(TEACHERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(teachers_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Warning: 寫入 {TEACHERS_FILE} 失敗: {e}", file=sys.stderr)
+
+    return teachers_data
 
 
 def serialize_courses(courses):
@@ -166,7 +214,14 @@ tr.day-row.hidden{display:none}
 .sub-b{display:inline-block;padding:2px 7px;border-radius:9px;font-size:11px;
        font-weight:700;background:#fde8e8;color:#9b1c1c;margin-left:5px;vertical-align:middle}
 .ctime{font-family:monospace;font-size:12px;color:#4a5568;white-space:nowrap}
-.tch{color:#6b7280}
+.tch{color:#6b7280;line-height:1.4}
+.t-unit{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;vertical-align:middle}
+.t-stars{color:#f59e0b;font-size:12px;letter-spacing:1px;font-weight:700}
+.t-tag{display:inline-block;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:700;line-height:1.2}
+.t-tag.tag-串聯{background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd}
+.t-tag.tag-流動{background:#fef3c7;color:#b45309;border:1px solid #fde68a}
+.t-tag.tag-阿斯坦加{background:#fae8ff;color:#86198f;border:1px solid #f5d0fe}
+.t-tag.tag-強力{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
 .nodata{text-align:center;padding:50px;color:#a0aec0;font-size:15px}
 
 /* CARD mobile */
@@ -423,6 +478,28 @@ function subBadge(c) {
   return c.is_sub ? '<span class="sub-b">代課</span>' : '';
 }
 
+function renderTeacherHtml(teacherStr) {
+  if (!teacherStr) return '';
+  const names = teacherStr.split('/').map(s => s.trim()).filter(Boolean);
+  return names.map(name => {
+    const info = (typeof TEACHERS_DATA !== 'undefined' && TEACHERS_DATA[name]) || {};
+    let starsHtml = '';
+    const rating = parseInt(info.intensity, 10);
+    if (rating >= 1 && rating <= 5) {
+      starsHtml = '<span class="t-stars">' + '★'.repeat(rating) + '</span>';
+    }
+    const tags = info.tags || [];
+    const tagsHtml = tags.map(tag =>
+      '<span class="t-tag tag-' + tag + '">' + tag + '</span>'
+    ).join('');
+    return '<span class="t-unit">'
+      + '<span>' + name + '</span>'
+      + (starsHtml ? ' ' + starsHtml : '')
+      + (tagsHtml ? ' ' + tagsHtml : '')
+      + '</span>';
+  }).join(' / ');
+}
+
 let currentFilteredRows = [];
 
 function renderTable(rows) {
@@ -449,7 +526,7 @@ function renderTable(rows) {
       + '<td>' + c.store + '</td>'
       + '<td><a class="clink" href="' + url + '" target="_blank">' + c.course_name + '</a>' + subBadge(c) + '</td>'
       + '<td class="ctime">' + c.course_time + '</td>'
-      + '<td class="tch">' + c.teacher + '</td>'
+      + '<td class="tch">' + renderTeacherHtml(c.teacher) + '</td>'
       + '<td>' + btns + '</td>'
       + '</tr>';
   });
@@ -497,7 +574,7 @@ function renderCards(rows) {
       + '<span class="rbadge card-badge ' + rCls + '">' + c.region + '</span>'
       + '<span class="card-store">' + c.store + '</span>'
       + '</div>'
-      + '<div class="card-tch"><span>老師：</span>' + c.teacher + '</div>'
+      + '<div class="card-tch"><span>老師：</span>' + renderTeacherHtml(c.teacher) + '</div>'
       + btns
       + '</div>';
   });
@@ -759,6 +836,7 @@ HTML_TEMPLATE = """\
 
 <script>
 const COURSES = __COURSES_JSON__;
+const TEACHERS_DATA = __TEACHERS_JSON__;
 __JS__
 </script>
 </body>
@@ -778,17 +856,22 @@ def main():
     if skipped:
         print(f'過濾停課/暫停/師資考核：{skipped} 筆', flush=True)
 
+    # 載入並更新 teachers.json（保存強度與持續累積的瑜珈標籤）
+    teachers_dict = load_and_update_teachers(serialized)
+
     courses_json   = json.dumps(serialized, ensure_ascii=False)
+    teachers_json  = json.dumps(teachers_dict, ensure_ascii=False)
     date_range     = f"{dates[0]} ~ {dates[-1]}" if len(dates) >= 2 else (dates[0] if dates else '')
     generated_at   = datetime.now().strftime('%Y-%m-%d %H:%M')
 
     html = HTML_TEMPLATE
-    html = html.replace('__CSS__',          CSS)
-    html = html.replace('__JS__',           JS)
-    html = html.replace('__COURSES_JSON__', courses_json)
-    html = html.replace('__STORE_CHIPS__',  build_store_chips())
-    html = html.replace('__DATE_RANGE__',   date_range)
-    html = html.replace('__GENERATED_AT__', generated_at)
+    html = html.replace('__CSS__',           CSS)
+    html = html.replace('__JS__',            JS)
+    html = html.replace('__COURSES_JSON__',  courses_json)
+    html = html.replace('__TEACHERS_JSON__', teachers_json)
+    html = html.replace('__STORE_CHIPS__',   build_store_chips())
+    html = html.replace('__DATE_RANGE__',    date_range)
+    html = html.replace('__GENERATED_AT__',  generated_at)
 
     with open(OUT, 'w', encoding='utf-8') as f:
         f.write(html)
