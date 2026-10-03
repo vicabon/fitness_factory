@@ -380,7 +380,9 @@
   },
   "Lisa劉": {
     "intensity": null,
-    "tags": []
+    "tags": [
+      "串聯"
+    ]
   },
   "Lori W.": {
     "intensity": null,
@@ -984,5 +986,9 @@
     "tags": [
       "流動"
     ]
+  },
+  "花花": {
+    "intensity": null,
+    "tags": []
   }
 }
